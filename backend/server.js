@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import clothesRoutes from './routes/clothesRoutes.js';
+import usersRouter from './routes/userRoutes.js'
+import cartRoutes from './routes/cartRoutes.js';
 
 dotenv.config();
 
@@ -16,6 +18,8 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes); 
 app.use('/api/clothes', clothesRoutes);
+app.use('/api/users', usersRouter)
+app.use('/api/cart', cartRoutes);
 
 
 

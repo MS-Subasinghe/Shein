@@ -22,11 +22,17 @@ const Login = () => {
       });
 
       const { token, user } = res.data;
+
+      // Save token and user in localStorage
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
 
+      // Optionally set axios default header for all requests
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // Redirect based on role
       if (user.role === 'admin') {
-        navigate('/admin/dashboard');
+        navigate('/admin');
       } else {
         navigate('/home');
       }
@@ -40,7 +46,9 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-600 via-indigo-700 to-blue-700 px-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10">
-        <h2 className="text-4xl font-extrabold text-center text-gray-900 mb-10">Welcome Back</h2>
+        <h2 className="text-4xl font-extrabold text-center text-gray-900 mb-10">
+          Welcome Back
+        </h2>
 
         {error && (
           <div className="bg-red-100 text-red-700 px-4 py-3 rounded mb-6 text-center font-semibold">
@@ -48,9 +56,12 @@ const Login = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Email Address
             </label>
             <input
@@ -62,11 +73,15 @@ const Login = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
+              autoComplete="email"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Password
             </label>
             <input
@@ -78,6 +93,7 @@ const Login = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
+              autoComplete="current-password"
             />
           </div>
 
@@ -96,7 +112,10 @@ const Login = () => {
 
         <p className="mt-8 text-center text-gray-600 text-sm">
           Don’t have an account?{' '}
-          <Link to="/register" className="text-indigo-600 hover:underline font-medium">
+          <Link
+            to="/register"
+            className="text-indigo-600 hover:underline font-medium"
+          >
             Register here
           </Link>
         </p>
