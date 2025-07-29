@@ -1,37 +1,10 @@
-// Navbar.jsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { UserCircleIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
 
-const Navbar = () => {
-  const [cartCount, setCartCount] = useState(0);
-  
-  // For demo purposes, using a fixed userId. In a real app, this would come from authentication
-  const userId = "user123";
-
-  useEffect(() => {
-    fetchCartCount();
-  }, []);
-
-  const fetchCartCount = async () => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/cart/${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCartCount(data.totalItems || 0);
-      }
-    } catch (err) {
-      console.error('Error fetching cart count:', err);
-    }
-  };
-
-  // Function to update cart count from child components
-  const updateCartCount = (newCount) => {
-    setCartCount(newCount);
-  };
-
+const Navbar = ({ cartCount = 0 }) => {
   return (
-    <nav className="fixed w-full bg-white shadow-md z-50">
+    <nav className="fixed w-full bg-white shadow-md z-50 top-0">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="text-2xl font-bold text-indigo-600">
@@ -74,6 +47,4 @@ const Navbar = () => {
   );
 };
 
-// Export both the component and the update function for use in other components
 export default Navbar;
-export { Navbar };

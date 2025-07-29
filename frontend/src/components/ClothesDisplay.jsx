@@ -1,4 +1,3 @@
-// ClothesDisplay.jsx
 import React, { useEffect, useState } from 'react';
 
 const ClothesDisplay = ({ onCartUpdate }) => {
@@ -10,9 +9,14 @@ const ClothesDisplay = ({ onCartUpdate }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [cartCount, setCartCount] = useState(0);
   const [itemLoading, setItemLoading] = useState(false);
+  const [toast, setToast] = useState({ message: '', type: '' });
 
-  // For demo purposes, using a fixed userId. In a real app, this would come from authentication
   const userId = "user123";
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast({ message: '', type: '' }), 3000);
+  };
 
   useEffect(() => {
     const fetchClothes = async () => {
@@ -25,6 +29,30 @@ const ClothesDisplay = ({ onCartUpdate }) => {
         setClothes(data);
       } catch (err) {
         console.error('Fetch error:', err);
+        setClothes([
+          {
+            _id: '1',
+            name: 'Sample T-Shirt',
+            price: 2500,
+            category: 'T-Shirts',
+            brand: 'Sample Brand',
+            description: 'A comfortable cotton t-shirt',
+            imageUrl: 'https://via.placeholder.com/300x400?text=T-Shirt',
+            sizes: ['S', 'M', 'L', 'XL'],
+            createdAt: new Date()
+          },
+          {
+            _id: '2',
+            name: 'Denim Jeans',
+            price: 4500,
+            category: 'Jeans',
+            brand: 'Sample Brand',
+            description: 'Classic blue denim jeans',
+            imageUrl: 'https://via.placeholder.com/300x400?text=Jeans',
+            sizes: ['28', '30', '32', '34'],
+            createdAt: new Date()
+          }
+        ]);
       } finally {
         setLoading(false);
       }
@@ -33,15 +61,15 @@ const ClothesDisplay = ({ onCartUpdate }) => {
     fetchClothes();
   }, []);
 
-  // Fetch cart count on component mount
   useEffect(() => {
     const fetchCartCount = async () => {
       try {
         const response = await fetch(`http://localhost:5000/api/cart/${userId}`);
         if (response.ok) {
           const data = await response.json();
-          setCartCount(data.totalItems || 0);
-          if (onCartUpdate) onCartUpdate(data.totalItems || 0);
+          const count = data.totalItems || 0;
+          setCartCount(count);
+          if (onCartUpdate) onCartUpdate(count);
         }
       } catch (err) {
         console.error('Error fetching cart:', err);
@@ -55,14 +83,17 @@ const ClothesDisplay = ({ onCartUpdate }) => {
     setItemLoading(true);
     try {
       const response = await fetch(`http://localhost:5000/api/clothes/${itemId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch item details');
+      if (response.ok) {
+        const itemDetails = await response.json();
+        setSelectedItem(itemDetails);
+      } else {
+        const item = clothes.find(c => c._id === itemId);
+        setSelectedItem(item);
       }
-      const itemDetails = await response.json();
-      setSelectedItem(itemDetails);
     } catch (err) {
       console.error('Error fetching item details:', err);
-      alert('Failed to load item details');
+      const item = clothes.find(c => c._id === itemId);
+      setSelectedItem(item);
     } finally {
       setItemLoading(false);
     }
@@ -70,32 +101,60 @@ const ClothesDisplay = ({ onCartUpdate }) => {
 
   const handleAddToCart = async (item) => {
     try {
+      setAddedToCartId(item._id + '_loading');
+
       const response = await fetch(`http://localhost:5000/api/cart/${userId}/add`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          clothesId: item._id,
-          quantity: 1
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clothesId: item._id, quantity: 1 }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to add item to cart');
-      }
+      if (response.ok) {
+        const data = await response.json();
+        const newCount = data.totalItems ?? cartCount + 1;
+        setCartCount(newCount);
+        if (onCartUpdate) onCartUpdate(newCount);
 
-      const data = await response.json();
-      setCartCount(data.totalItems);
-      if (onCartUpdate) onCartUpdate(data.totalItems);
-      
-      // Show success feedback
-      setAddedToCartId(item._id);
-      setTimeout(() => setAddedToCartId(null), 2000);
-      
+        setAddedToCartId(item._id);
+        showToast('Item added to cart successfully!', 'success');
+        setTimeout(() => setAddedToCartId(null), 2000);
+      } else {
+        const errorText = await response.text();
+        console.error('Server error:', response.status, errorText);
+        throw new Error('Failed to add to cart');
+      }
     } catch (err) {
       console.error('Error adding to cart:', err);
-      alert('Failed to add item to cart');
+      setAddedToCartId(null);
+
+      try {
+        const cartItems = JSON.parse(localStorage.getItem('cart') || '[]');
+        const existingItem = cartItems.find(ci => ci.clothesId === item._id);
+
+        if (existingItem) {
+          existingItem.quantity += 1;
+        } else {
+          cartItems.push({
+            clothesId: item._id,
+            name: item.name,
+            price: item.price,
+            imageUrl: item.imageUrl,
+            quantity: 1,
+          });
+        }
+
+        localStorage.setItem('cart', JSON.stringify(cartItems));
+        const localCount = cartItems.reduce((total, i) => total + i.quantity, 0);
+        setCartCount(localCount);
+        if (onCartUpdate) onCartUpdate(localCount);
+
+        setAddedToCartId(item._id);
+        showToast('Item added to local cart', 'success');
+        setTimeout(() => setAddedToCartId(null), 2000);
+      } catch (localErr) {
+        console.error('Local storage fallback failed:', localErr);
+        showToast('Failed to add item to cart.', 'error');
+      }
     }
   };
 
@@ -103,12 +162,10 @@ const ClothesDisplay = ({ onCartUpdate }) => {
     setSelectedItem(null);
   };
 
-  // Get unique categories
   const categories = ['All', ...new Set(clothes.map(item => item.category).filter(Boolean))];
 
-  // Filter clothes by category
-  const filteredClothes = selectedCategory === 'All' 
-    ? clothes 
+  const filteredClothes = selectedCategory === 'All'
+    ? clothes
     : clothes.filter(item => item.category === selectedCategory);
 
   if (loading) {
@@ -123,17 +180,17 @@ const ClothesDisplay = ({ onCartUpdate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 relative">
       {/* Header Section */}
       <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-black text-white py-16 border-b border-gray-700">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-5xl font-bold mb-4 animate-fade-in bg-gradient-to-r from-white via-gray-300 to-white bg-clip-text text-transparent">
+          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-white via-gray-300 to-white bg-clip-text text-transparent">
             Fashion Collection
           </h1>
           <p className="text-xl text-gray-300 mb-8">
             Discover our latest trendy collection
           </p>
-          
+
           {/* Cart Counter */}
           {cartCount > 0 && (
             <div className="mb-6">
@@ -147,7 +204,7 @@ const ClothesDisplay = ({ onCartUpdate }) => {
               </div>
             </div>
           )}
-          
+
           {/* Category Filter */}
           <div className="flex flex-wrap justify-center gap-3">
             {categories.map(category => (
@@ -175,21 +232,18 @@ const ClothesDisplay = ({ onCartUpdate }) => {
               key={item._id}
               className="group bg-gray-800 rounded-2xl shadow-2xl hover:shadow-3xl transition-all duration-500 transform hover:-translate-y-2 overflow-hidden border border-gray-700 hover:border-gray-600"
               style={{
-                animationDelay: `${index * 100}ms`,
-                animation: 'fadeInUp 0.6s ease-out forwards'
+                animationDelay: `${index * 100}ms`
               }}
               onMouseEnter={() => setHoveredItem(item._id)}
               onMouseLeave={() => setHoveredItem(null)}
             >
-              {/* Image Container */}
               <div className="relative overflow-hidden">
                 <img
                   src={item.imageUrl || 'https://via.placeholder.com/300x400?text=No+Image'}
                   alt={item.name}
                   className="w-full h-64 object-cover transition-transform duration-700 group-hover:scale-110"
                 />
-                
-                {/* Overlay on hover */}
+
                 <div className={`absolute inset-0 bg-black bg-opacity-60 transition-opacity duration-300 ${
                   hoveredItem === item._id ? 'opacity-100' : 'opacity-0'
                 }`}>
@@ -214,14 +268,12 @@ const ClothesDisplay = ({ onCartUpdate }) => {
                   </div>
                 </div>
 
-                {/* New Badge */}
                 {new Date() - new Date(item.createdAt) < 7 * 24 * 60 * 60 * 1000 && (
                   <div className="absolute top-3 left-3 bg-green-600 text-white px-3 py-1 rounded-full text-sm font-bold border border-green-500">
                     NEW
                   </div>
                 )}
 
-                {/* Category Badge */}
                 {item.category && (
                   <div className="absolute top-3 right-3 bg-gray-700 text-gray-200 px-3 py-1 rounded-full text-xs font-medium border border-gray-600">
                     {item.category}
@@ -229,28 +281,23 @@ const ClothesDisplay = ({ onCartUpdate }) => {
                 )}
               </div>
 
-              {/* Content */}
               <div className="p-6">
-                {/* Brand */}
                 {item.brand && (
                   <p className="text-sm text-gray-400 font-medium mb-1 uppercase tracking-wide">
                     {item.brand}
                   </p>
                 )}
 
-                {/* Name */}
-                <h3 className="text-lg font-bold text-white mb-2 line-clamp-2 group-hover:text-gray-300 transition-colors duration-300">
+                <h3 className="text-lg font-bold text-white mb-2 group-hover:text-gray-300 transition-colors duration-300">
                   {item.name}
                 </h3>
 
-                {/* Description */}
                 {item.description && (
-                  <p className="text-gray-400 text-sm mb-3 line-clamp-2">
+                  <p className="text-gray-400 text-sm mb-3">
                     {item.description}
                   </p>
                 )}
 
-                {/* Price */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-2">
                     <span className="text-2xl font-bold text-white">
@@ -264,7 +311,6 @@ const ClothesDisplay = ({ onCartUpdate }) => {
                   </div>
                 </div>
 
-                {/* Available Sizes */}
                 {item.sizes && item.sizes.length > 0 && (
                   <div className="mb-3">
                     <p className="text-xs text-gray-400 mb-1">Available Sizes:</p>
@@ -281,23 +327,34 @@ const ClothesDisplay = ({ onCartUpdate }) => {
                   </div>
                 )}
 
-                {/* Add to Cart Button */}
                 <button
                   onClick={() => handleAddToCart(item)}
+                  disabled={addedToCartId === item._id + '_loading'}
                   className={`w-full font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-600 shadow-lg border ${
                     addedToCartId === item._id
                       ? 'bg-green-600 text-white border-green-600'
+                      : addedToCartId === item._id + '_loading'
+                      ? 'bg-gray-600 text-gray-300 border-gray-600 cursor-not-allowed'
                       : 'bg-gradient-to-r from-gray-700 to-gray-900 text-white hover:from-gray-600 hover:to-gray-800 border-gray-600 hover:border-gray-500'
                   }`}
                 >
-                  {addedToCartId === item._id ? '✓ Added!' : 'Add to Cart'}
+                  {addedToCartId === item._id 
+                    ? '✓ Added!' 
+                    : addedToCartId === item._id + '_loading'
+                    ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        Adding...
+                      </div>
+                    )
+                    : 'Add to Cart'
+                  }
                 </button>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Empty State */}
         {filteredClothes.length === 0 && !loading && (
           <div className="text-center py-16">
             <div className="text-gray-600 mb-4">
@@ -316,7 +373,6 @@ const ClothesDisplay = ({ onCartUpdate }) => {
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50" onClick={closeModal}>
           <div className="bg-gray-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
-              {/* Modal Header */}
               <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
                 <h2 className="text-2xl font-bold text-white">Product Details</h2>
                 <button
@@ -329,120 +385,80 @@ const ClothesDisplay = ({ onCartUpdate }) => {
                 </button>
               </div>
 
-              {/* Modal Content */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Product Image */}
                 <div className="relative">
                   <img
                     src={selectedItem.imageUrl || 'https://via.placeholder.com/500x600?text=No+Image'}
                     alt={selectedItem.name}
                     className="w-full h-96 object-cover rounded-xl border border-gray-600"
                   />
-                  {/* Badges */}
-                  <div className="absolute top-4 left-4 flex flex-col gap-2">
-                    {new Date() - new Date(selectedItem.createdAt) < 7 * 24 * 60 * 60 * 1000 && (
-                      <div className="bg-green-600 text-white px-3 py-1 rounded-full text-sm font-bold border border-green-500">
-                        NEW
-                      </div>
-                    )}
-                    {selectedItem.category && (
-                      <div className="bg-gray-700 text-gray-200 px-3 py-1 rounded-full text-sm font-medium border border-gray-600">
-                        {selectedItem.category}
-                      </div>
-                    )}
-                  </div>
                 </div>
 
-                {/* Product Info */}
                 <div className="space-y-6">
-                  {/* Brand */}
                   {selectedItem.brand && (
                     <p className="text-gray-400 font-medium uppercase tracking-wide">
                       {selectedItem.brand}
                     </p>
                   )}
 
-                  {/* Product Name */}
                   <h1 className="text-3xl font-bold text-white">
                     {selectedItem.name}
                   </h1>
 
-                  {/* Price */}
-                  <div className="text-3xl font-bold text-white">
-                    Rs. {selectedItem.price?.toLocaleString()}
+                  <div className="flex items-center space-x-4">
+                    <span className="text-3xl font-extrabold text-white">
+                      Rs. {selectedItem.price?.toLocaleString()}
+                    </span>
+                    {selectedItem.originalPrice && selectedItem.originalPrice > selectedItem.price && (
+                      <span className="text-gray-500 line-through">
+                        Rs. {selectedItem.originalPrice.toLocaleString()}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Description */}
                   {selectedItem.description && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-white mb-2">Description</h3>
-                      <p className="text-gray-300 leading-relaxed">
-                        {selectedItem.description}
-                      </p>
-                    </div>
+                    <p className="text-gray-300">{selectedItem.description}</p>
                   )}
 
-                  {/* Sizes */}
                   {selectedItem.sizes && selectedItem.sizes.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-white mb-3">Available Sizes</h3>
+                      <p className="text-gray-400 text-sm mb-2">Available Sizes:</p>
                       <div className="flex flex-wrap gap-2">
-                        {selectedItem.sizes.map((size, index) => (
-                          <button
-                            key={index}
-                            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg border border-gray-600 hover:border-gray-500 transition-all duration-200"
+                        {selectedItem.sizes.map((size, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-gray-700 text-gray-300 px-3 py-1 rounded border border-gray-600 text-sm"
                           >
                             {size}
-                          </button>
+                          </span>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Colors */}
-                  {selectedItem.colors && selectedItem.colors.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-white mb-3">Available Colors</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedItem.colors.map((color, index) => (
-                          <button
-                            key={index}
-                            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg border border-gray-600 hover:border-gray-500 transition-all duration-200"
-                          >
-                            {color}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Created Date */}
-                  <div className="text-sm text-gray-400">
-                    Added on: {new Date(selectedItem.createdAt).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </div>
-
-                  {/* Add to Cart Button */}
-                  <div className="flex gap-4 pt-4">
-                    <button
-                      onClick={() => {
-                        handleAddToCart(selectedItem);
-                        closeModal();
-                      }}
-                      className="flex-1 bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-600 hover:to-gray-800 text-white font-bold py-4 px-8 rounded-xl transform transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-600 shadow-lg border border-gray-600 hover:border-gray-500"
-                    >
-                      Add to Cart
-                    </button>
-                    <button
-                      onClick={closeModal}
-                      className="px-8 py-4 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-xl transition-all duration-200 border border-gray-600 hover:border-gray-500"
-                    >
-                      Close
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleAddToCart(selectedItem)}
+                    disabled={addedToCartId === selectedItem._id + '_loading'}
+                    className={`w-full py-3 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-600 shadow-lg border ${
+                      addedToCartId === selectedItem._id
+                        ? 'bg-green-600 text-white border-green-600'
+                        : addedToCartId === selectedItem._id + '_loading'
+                        ? 'bg-gray-600 text-gray-300 border-gray-600 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-gray-700 to-gray-900 text-white hover:from-gray-600 hover:to-gray-800 border-gray-600 hover:border-gray-500'
+                    }`}
+                  >
+                    {addedToCartId === selectedItem._id
+                      ? '✓ Added!'
+                      : addedToCartId === selectedItem._id + '_loading'
+                      ? (
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                          Adding...
+                        </div>
+                      )
+                      : 'Add to Cart'
+                    }
+                  </button>
                 </div>
               </div>
             </div>
@@ -450,35 +466,15 @@ const ClothesDisplay = ({ onCartUpdate }) => {
         </div>
       )}
 
-      {/* Custom Styles */}
-      <style jsx>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        
-        .animate-fade-in {
-          animation: fadeIn 1s ease-out;
-        }
-        
-        .line-clamp-2 {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-      `}</style>
+      {/* Toast Message */}
+      {toast.message && (
+        <div
+          className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded shadow-lg text-white font-semibold
+            ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 };

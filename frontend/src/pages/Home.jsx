@@ -332,12 +332,34 @@ const Home = () => {
     <>
       <Navbar />
       <HeroSection />
-      <NewArrivals />
+            <NewArrivals />
+{/* Fashion Show YouTube Embed */}
+<section className="py-12 bg-white">
+  <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="w-full h-[500px] sm:h-[550px] lg:h-[600px]">
+      <iframe
+        className="w-full h-full rounded-xl shadow-2xl"
+        src="https://www.youtube.com/embed/CKtH-doJ2aM?autoplay=1&mute=1"
+        title="Fashion Show"
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+      ></iframe>
+    </div>
+    <h3 className="text-center text-gray-800 text-2xl font-bold mt-6">
+      Watch Our Latest Fashion Show
+    </h3>
+  </div>
+</section>
+
+
+
       <ClientRatings />
       <OfferBanners />
-      <FooterMultiColumn/>
+      <FooterMultiColumn />
     </>
   )
 }
+
 
 export default Home

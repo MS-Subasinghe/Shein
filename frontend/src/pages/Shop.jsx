@@ -1,20 +1,11 @@
-// Shop.jsx
-//import HeroSection from '../components/HeroSection';
+import React from 'react';
 import ClothesDisplay from '../components/ClothesDisplay';
-import NavBar from '../components/NavBar'; 
-import Footer from '../components/Footer'
 
-const Shop = () => {
+const Shop = ({ onCartUpdate }) => {
   return (
-    <>
-      <NavBar />
-      <div>
-        <h2 className="text-3xl font-bold text-center my-8">All Products</h2>
-        <ClothesDisplay />
-      </div>
-
-        <Footer/>
-    </>
+    <div className="min-h-screen">
+      <ClothesDisplay onCartUpdate={onCartUpdate} />
+    </div>
   );
 };
 
