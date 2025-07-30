@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const ClothesDisplay = ({ onCartUpdate }) => {
   const [clothes, setClothes] = useState([]);
@@ -11,7 +12,27 @@ const ClothesDisplay = ({ onCartUpdate }) => {
   const [itemLoading, setItemLoading] = useState(false);
   const [toast, setToast] = useState({ message: '', type: '' });
 
-  const userId = "user123";
+  const navigate = useNavigate();
+
+  // Get auth token from localStorage
+  const getAuthToken = () => {
+    return localStorage.getItem('token');
+  };
+
+  // Check if user is authenticated
+  const isAuthenticated = () => {
+    const token = getAuthToken();
+    return token && token !== '';
+  };
+
+  // Create headers with authentication
+  const getAuthHeaders = () => {
+    const token = getAuthToken();
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+  };
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -63,8 +84,34 @@ const ClothesDisplay = ({ onCartUpdate }) => {
 
   useEffect(() => {
     const fetchCartCount = async () => {
+      // Only fetch cart count if user is authenticated
+      if (!isAuthenticated()) {
+        // Try to get count from localStorage
+        try {
+          const localCart = JSON.parse(localStorage.getItem('cart') || '[]');
+          const count = localCart.reduce((total, item) => total + item.quantity, 0);
+          setCartCount(count);
+          if (onCartUpdate) onCartUpdate(count);
+        } catch (err) {
+          console.error('Error reading local cart:', err);
+        }
+        return;
+      }
+
       try {
-        const response = await fetch(`http://localhost:5000/api/cart/${userId}`);
+        const response = await fetch(`http://localhost:5000/api/cart/`, {
+          headers: getAuthHeaders()
+        });
+        
+        if (response.status === 401 || response.status === 403) {
+          // Token expired or invalid, fallback to localStorage
+          const localCart = JSON.parse(localStorage.getItem('cart') || '[]');
+          const count = localCart.reduce((total, item) => total + item.quantity, 0);
+          setCartCount(count);
+          if (onCartUpdate) onCartUpdate(count);
+          return;
+        }
+        
         if (response.ok) {
           const data = await response.json();
           const count = data.totalItems || 0;
@@ -73,11 +120,20 @@ const ClothesDisplay = ({ onCartUpdate }) => {
         }
       } catch (err) {
         console.error('Error fetching cart:', err);
+        // Fallback to localStorage
+        try {
+          const localCart = JSON.parse(localStorage.getItem('cart') || '[]');
+          const count = localCart.reduce((total, item) => total + item.quantity, 0);
+          setCartCount(count);
+          if (onCartUpdate) onCartUpdate(count);
+        } catch (localErr) {
+          console.error('Error reading local cart:', localErr);
+        }
       }
     };
 
     fetchCartCount();
-  }, [userId, onCartUpdate]);
+  }, [onCartUpdate]);
 
   const handleQuickView = async (itemId) => {
     setItemLoading(true);
@@ -100,14 +156,28 @@ const ClothesDisplay = ({ onCartUpdate }) => {
   };
 
   const handleAddToCart = async (item) => {
+    // Check if user is authenticated
+    if (!isAuthenticated()) {
+      showToast('Please login to add items to cart', 'error');
+      navigate('/login');
+      return;
+    }
+
     try {
       setAddedToCartId(item._id + '_loading');
 
-      const response = await fetch(`http://localhost:5000/api/cart/${userId}/add`, {
+      const response = await fetch(`http://localhost:5000/api/cart/add`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ clothesId: item._id, quantity: 1 }),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        showToast('Please login to add items to cart', 'error');
+        navigate('/login');
+        setAddedToCartId(null);
+        return;
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -127,33 +197,39 @@ const ClothesDisplay = ({ onCartUpdate }) => {
       console.error('Error adding to cart:', err);
       setAddedToCartId(null);
 
-      try {
-        const cartItems = JSON.parse(localStorage.getItem('cart') || '[]');
-        const existingItem = cartItems.find(ci => ci.clothesId === item._id);
+      // Only use localStorage fallback if user is authenticated but server failed
+      if (isAuthenticated()) {
+        try {
+          const cartItems = JSON.parse(localStorage.getItem('cart') || '[]');
+          const existingItem = cartItems.find(ci => ci.clothesId === item._id);
 
-        if (existingItem) {
-          existingItem.quantity += 1;
-        } else {
-          cartItems.push({
-            clothesId: item._id,
-            name: item.name,
-            price: item.price,
-            imageUrl: item.imageUrl,
-            quantity: 1,
-          });
+          if (existingItem) {
+            existingItem.quantity += 1;
+          } else {
+            cartItems.push({
+              clothesId: item._id,
+              name: item.name,
+              price: item.price,
+              imageUrl: item.imageUrl,
+              quantity: 1,
+            });
+          }
+
+          localStorage.setItem('cart', JSON.stringify(cartItems));
+          const localCount = cartItems.reduce((total, i) => total + i.quantity, 0);
+          setCartCount(localCount);
+          if (onCartUpdate) onCartUpdate(localCount);
+
+          setAddedToCartId(item._id);
+          showToast('Item added to local cart (server unavailable)', 'success');
+          setTimeout(() => setAddedToCartId(null), 2000);
+        } catch (localErr) {
+          console.error('Local storage fallback failed:', localErr);
+          showToast('Failed to add item to cart.', 'error');
         }
-
-        localStorage.setItem('cart', JSON.stringify(cartItems));
-        const localCount = cartItems.reduce((total, i) => total + i.quantity, 0);
-        setCartCount(localCount);
-        if (onCartUpdate) onCartUpdate(localCount);
-
-        setAddedToCartId(item._id);
-        showToast('Item added to local cart', 'success');
-        setTimeout(() => setAddedToCartId(null), 2000);
-      } catch (localErr) {
-        console.error('Local storage fallback failed:', localErr);
-        showToast('Failed to add item to cart.', 'error');
+      } else {
+        showToast('Please login to add items to cart', 'error');
+        navigate('/login');
       }
     }
   };
@@ -190,6 +266,20 @@ const ClothesDisplay = ({ onCartUpdate }) => {
           <p className="text-xl text-gray-300 mb-8">
             Discover our latest trendy collection
           </p>
+
+          {/* Authentication Status */}
+          {!isAuthenticated() && (
+            <div className="mb-6">
+              <div className="inline-flex items-center bg-yellow-600 rounded-full px-4 py-2 border border-yellow-500">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <span className="text-white font-medium">
+                  Please login to add items to cart
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Cart Counter */}
           {cartCount > 0 && (
@@ -279,6 +369,14 @@ const ClothesDisplay = ({ onCartUpdate }) => {
                     {item.category}
                   </div>
                 )}
+
+                {!isAuthenticated() && (
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <div className="bg-yellow-600 text-white px-2 py-1 rounded text-xs font-medium text-center border border-yellow-500">
+                      Login required to purchase
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-6">
@@ -329,16 +427,20 @@ const ClothesDisplay = ({ onCartUpdate }) => {
 
                 <button
                   onClick={() => handleAddToCart(item)}
-                  disabled={addedToCartId === item._id + '_loading'}
+                  disabled={addedToCartId === item._id + '_loading' || !isAuthenticated()}
                   className={`w-full font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-600 shadow-lg border ${
-                    addedToCartId === item._id
+                    !isAuthenticated()
+                      ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed'
+                      : addedToCartId === item._id
                       ? 'bg-green-600 text-white border-green-600'
                       : addedToCartId === item._id + '_loading'
                       ? 'bg-gray-600 text-gray-300 border-gray-600 cursor-not-allowed'
                       : 'bg-gradient-to-r from-gray-700 to-gray-900 text-white hover:from-gray-600 hover:to-gray-800 border-gray-600 hover:border-gray-500'
                   }`}
                 >
-                  {addedToCartId === item._id 
+                  {!isAuthenticated()
+                    ? 'Login to Add'
+                    : addedToCartId === item._id 
                     ? '✓ Added!' 
                     : addedToCartId === item._id + '_loading'
                     ? (
@@ -438,16 +540,20 @@ const ClothesDisplay = ({ onCartUpdate }) => {
 
                   <button
                     onClick={() => handleAddToCart(selectedItem)}
-                    disabled={addedToCartId === selectedItem._id + '_loading'}
+                    disabled={addedToCartId === selectedItem._id + '_loading' || !isAuthenticated()}
                     className={`w-full py-3 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-600 shadow-lg border ${
-                      addedToCartId === selectedItem._id
+                      !isAuthenticated()
+                        ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed'
+                        : addedToCartId === selectedItem._id
                         ? 'bg-green-600 text-white border-green-600'
                         : addedToCartId === selectedItem._id + '_loading'
                         ? 'bg-gray-600 text-gray-300 border-gray-600 cursor-not-allowed'
                         : 'bg-gradient-to-r from-gray-700 to-gray-900 text-white hover:from-gray-600 hover:to-gray-800 border-gray-600 hover:border-gray-500'
                     }`}
                   >
-                    {addedToCartId === selectedItem._id
+                    {!isAuthenticated()
+                      ? 'Login Required to Add to Cart'
+                      : addedToCartId === selectedItem._id
                       ? '✓ Added!'
                       : addedToCartId === selectedItem._id + '_loading'
                       ? (
